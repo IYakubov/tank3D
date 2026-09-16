@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Tank War — Controller</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;600;700;800&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff8ec;
+  --panel:#ffffff;
+  --panel2:#fff3d6;
+  --border:#ffe1a8;
+  --accent:#2f80ed;
+  --accent2:#ff9f45;
+  --accentdim:#e8f1ff;
+  --btn:#ffffff;
+  --btnborder:#ffe1a8;
+  --btnglow:#2f80ed;
+  --text:#5b567a;
+  --textdim:#a8a2c0;
+  --grid:#ffe1a8;
+}
+html,body{
+  height:100%;width:100%;
+  background:var(--bg);
+  color:var(--text);
+  font-family:'Nunito',sans-serif;
+  overflow:hidden;
+  touch-action:none;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  -ms-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+*{
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  -moz-user-select:none;
+  -ms-user-select:none;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* dotted background */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;
+  background-image:radial-gradient(var(--grid) 1.5px,transparent 1.5px);
+  background-size:28px 28px;
+  opacity:.5;
+}
+
+body::after{content:none}
+
+/* ── SCREENS ── */
+.screen{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;padding:24px;
+  transition:opacity .3s;
+}
+.screen.hidden{opacity:0;pointer-events:none}
+
+/* ── JOIN SCREEN ── */
+.game-title{
+  font-family:'Baloo 2',sans-serif;font-size:1.6rem;font-weight:800;
+  color:var(--accent2);letter-spacing:.01em;
+}
+.sub{font-size:.78rem;color:var(--textdim);text-align:center;font-weight:600}
+
+.code-input-wrap{
+  display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;max-width:280px;
+}
+.code-label{font-size:.68rem;color:var(--textdim);letter-spacing:.04em;font-weight:700}
+#code-input{
+  width:100%;padding:14px 16px;text-align:center;letter-spacing:.3em;
+  background:var(--panel);border:2px solid var(--border);border-radius:16px;color:var(--accent);
+  font-family:'Baloo 2',sans-serif;font-size:1.6rem;font-weight:700;
+  outline:none;
+}
+#code-input:focus{border-color:var(--accent)}
+
+.btn{
+  padding:14px 32px;background:var(--accent);border:none;border-radius:18px;
+  color:#fff;font-family:'Baloo 2',sans-serif;font-size:.9rem;font-weight:700;
+  letter-spacing:.01em;cursor:pointer;transition:all .15s;width:100%;max-width:280px;
+  position:relative;box-shadow:0 5px 0 #1f5fc2;
+}
+.btn::before,.btn::after{content:none}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 #1f5fc2}
+#error-msg{font-size:.72rem;color:#f4574b;min-height:1em;font-weight:700}
+
+/* ── LOBBY SCREEN ── */
+.slot-badge{
+  font-family:'Baloo 2',sans-serif;font-size:2.5rem;font-weight:800;
+  padding:16px 40px;border:2px solid var(--accent);border-radius:20px;
+  color:var(--accent);background:var(--panel);
+  box-shadow:0 4px 14px rgba(46,42,74,.08);
+  letter-spacing:.05em;
+}
+.lobby-status{font-size:.75rem;color:var(--textdim);text-align:center;font-weight:600}
+.ready-indicator{
+  display:flex;gap:16px;font-size:.7rem;color:var(--textdim);font-weight:700;
+}
+.ri{display:flex;align-items:center;gap:6px}
+.ri-dot{width:10px;height:10px;border-radius:50%;background:var(--btnborder)}
+.ri-dot.on{background:var(--accent)}
+.btn-ready{
+  padding:16px 40px;background:var(--accent2);border:none;border-radius:20px;
+  color:#fff;font-family:'Baloo 2',sans-serif;font-size:1rem;font-weight:700;
+  letter-spacing:.01em;cursor:pointer;transition:all .15s;width:100%;max-width:300px;
+  position:relative;box-shadow:0 6px 0 #c96e1f;
+}
+.btn-ready::before,.btn-ready::after{content:none}
+.btn-ready:active,.btn-ready.pressed{
+  transform:translateY(4px);box-shadow:0 2px 0 #c96e1f;
+}
+.btn-ready.done{
+  background:#2bb673;box-shadow:0 6px 0 #1f8a54;color:#fff;
+}
+
+/* ── CONTROLLER SCREEN ── */
+#controller-screen{
+  justify-content:space-around;padding:20px;flex-direction:row;align-items:center;
+}
+.ctrl-side{
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* D-PAD */
+.dpad{
+  width:180px;height:180px;position:relative;
+  display:grid;grid-template-columns:60px 60px 60px;grid-template-rows:60px 60px 60px;
+  gap:4px;
+}
+.dpad-btn{
+  background:var(--btn);border:2px solid var(--btnborder);border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .08s,box-shadow .08s;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:none;
+  position:relative;overflow:hidden;
+}
+.dpad-btn svg{width:22px;height:22px;fill:var(--accent2);transition:fill .08s}
+.dpad-btn.active{
+  background:var(--accentdim);border-color:var(--accent);
+}
+.dpad-btn.active svg{fill:var(--accent)}
+
+/* D-pad layout: up center, left/center/right, down center */
+.dpad-up{grid-column:2;grid-row:1;}
+.dpad-left{grid-column:1;grid-row:2;}
+.dpad-center{grid-column:2;grid-row:2; background:var(--panel2);cursor:default;border-radius:14px}
+.dpad-right{grid-column:3;grid-row:2;}
+.dpad-down{grid-column:2;grid-row:3;}
+/* fill corners visually */
+.dpad-corner{background:transparent;border:none}
+.dpad-corner-tl{grid-column:1;grid-row:1}
+.dpad-corner-tr{grid-column:3;grid-row:1}
+.dpad-corner-bl{grid-column:1;grid-row:3}
+.dpad-corner-br{grid-column:3;grid-row:3}
+
+/* Player slot label in center */
+.dpad-label{
+  font-family:'Baloo 2',sans-serif;font-size:1.1rem;font-weight:700;
+  color:var(--accent2);letter-spacing:.02em;
+}
+
+/* ACTION BUTTON */
+.action-btn{
+  width:130px;height:130px;border-radius:50%;
+  background:var(--btn);border:3px solid var(--btnborder);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .08s,box-shadow .08s;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:none;
+  position:relative;
+}
+.action-inner{
+  width:80px;height:80px;border-radius:50%;
+  background:var(--panel2);border:1px solid var(--btnborder);
+  display:flex;align-items:center;justify-content:center;
+}
+/* X grid pattern inside action button */
+.action-x{
+  width:56px;height:56px;position:relative;
+}
+.action-x::before,.action-x::after{
+  content:'';position:absolute;background:var(--btnborder);
+  transition:background .08s;
+}
+.action-x::before{width:100%;height:10px;top:50%;left:0;transform:translateY(-50%)}
+.action-x::after{width:10px;height:100%;left:50%;top:0;transform:translateX(-50%)}
+/* pixel X pattern */
+.px-grid{
+  display:grid;grid-template-columns:repeat(7,8px);grid-template-rows:repeat(7,8px);
+  position:absolute;inset:0;
+}
+.px{background:transparent}
+.px.on{background:var(--btnborder);transition:background .08s}
+
+.action-btn.active .px.on{background:var(--accent)}
+.action-btn.active{
+  background:var(--accentdim);border-color:var(--accent);
+}
+
+/* player badge on controller */
+.ctrl-badge{
+  font-family:'Baloo 2',sans-serif;font-size:.78rem;font-weight:700;
+  color:var(--accent2);letter-spacing:.01em;text-align:center;margin-top:8px;
+}
+
+/* vs divider */
+.ctrl-vs{
+  font-family:'Baloo 2',sans-serif;font-size:.9rem;color:var(--textdim);
+}
+
+/* waiting message on controller screen */
+#ctrl-waiting{
+  position:absolute;top:16px;left:0;right:0;
+  text-align:center;font-size:.7rem;color:var(--textdim);font-weight:700;
+}
+
+/* ── ROTATE DEVICE OVERLAY ── */
+.rotate-overlay{
+  display:none;
+  position:fixed;inset:0;z-index:10000;
+  background:var(--bg);
+  flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  text-align:center;padding:24px;
+}
+.rotate-overlay.visible{display:flex}
+.rotate-icon{
+  width:90px;height:90px;
+  animation:rotate-hint 1.6s ease-in-out infinite;
+}
+@keyframes rotate-hint{
+  0%,100%{transform:rotate(0deg)}
+  50%{transform:rotate(90deg)}
+}
+.rotate-text{
+  font-family:'Baloo 2',sans-serif;font-weight:800;font-size:1.1rem;
+  color:var(--accent);letter-spacing:.01em;
+}
+.rotate-sub{
+  font-size:.7rem;color:var(--textdim);font-weight:600;
+}
+</style>
+</head>
+<body>
+
+<!-- ── ROTATE DEVICE OVERLAY ── -->
+<div class="rotate-overlay" id="rotate-overlay">
+  <svg class="rotate-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect x="30" y="10" width="40" height="65" rx="6" fill="none" stroke="var(--accent)" stroke-width="4"/>
+    <circle cx="50" cy="68" r="2.5" fill="var(--accent)"/>
+    <path d="M 78 30 A 30 30 0 1 1 65 8" fill="none" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/>
+    <path d="M 78 30 L 78 16 L 64 16 Z" fill="var(--accent)"/>
+  </svg>
+  <div class="rotate-text">Rotate your phone</div>
+  <div class="rotate-sub">Turn to landscape to play</div>
+</div>
+
+<!-- ── JOIN SCREEN ── -->
+<div class="screen" id="join-screen">
+  <div class="game-title">Tank War</div>
+  <div class="sub">Enter Room Code</div>
+  <div class="code-input-wrap">
+    <div class="code-label">Room Code</div>
+    <input id="code-input" type="text" maxlength="6" placeholder="000000" autocomplete="off" inputmode="numeric">
+    <div id="error-msg"></div>
+    <button class="btn" id="join-btn">Join Game</button>
+  </div>
+</div>
+
+<!-- ── LOBBY SCREEN ── -->
+<div class="screen hidden" id="lobby-screen">
+  <div class="game-title">Tank War</div>
+  <div class="slot-badge" id="my-slot-badge">A</div>
+  <div class="lobby-status" id="lobby-status">Waiting for other player...</div>
+  <div class="ready-indicator">
+    <div class="ri"><div class="ri-dot" id="dot-a"></div><span>Player A</span></div>
+    <div class="ri"><div class="ri-dot" id="dot-b"></div><span>Player B</span></div>
+  </div>
+  <button class="btn-ready" id="ready-btn">Ready Up</button>
+</div>
+
+<!-- ── CONTROLLER SCREEN ── -->
+<div class="screen hidden" id="controller-screen">
+  <div id="ctrl-waiting" style="display:none">Waiting for game to start...</div>
+
+  <!-- D-PAD LEFT -->
+  <div class="ctrl-side" style="flex-direction:column;gap:6px">
+    <div class="dpad" id="dpad">
+      <div class="dpad-corner dpad-corner-tl"></div>
+      <div class="dpad-btn dpad-up" data-dir="up">
+        <svg viewBox="0 0 24 24"><path d="M12 4l8 10H4z"/></svg>
+      </div>
+      <div class="dpad-corner dpad-corner-tr"></div>
+
+      <div class="dpad-btn dpad-left" data-dir="left">
+        <svg viewBox="0 0 24 24"><path d="M4 12l10-8v16z"/></svg>
+      </div>
+      <div class="dpad-center dpad-btn">
+        <span class="dpad-label" id="dpad-label">A</span>
+      </div>
+      <div class="dpad-btn dpad-right" data-dir="right">
+        <svg viewBox="0 0 24 24"><path d="M20 12L10 4v16z"/></svg>
+      </div>
+
+      <div class="dpad-corner dpad-corner-bl"></div>
+      <div class="dpad-btn dpad-down" data-dir="down">
+        <svg viewBox="0 0 24 24"><path d="M12 20l-8-10h16z"/></svg>
+      </div>
+      <div class="dpad-corner dpad-corner-br"></div>
+    </div>
+    <div class="ctrl-badge" id="ctrl-badge">Player A</div>
+  </div>
+
+  <!-- ACTION BUTTON RIGHT -->
+  <div class="ctrl-side" style="flex-direction:column;gap:6px">
+    <div class="action-btn" id="action-btn">
+      <div class="action-inner">
+        <div class="action-x">
+          <!-- 7x7 pixel X grid -->
+          <div class="px-grid" id="px-grid"></div>
+        </div>
+      </div>
+    </div>
+    <div class="ctrl-badge" style="color:var(--textdim)">Fire</div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+// ── Pixel X pattern for action button (7x7) ──
+// X shape: corners lit, diagonals
+const X_PATTERN=[
+  1,0,0,0,0,0,1,
+  0,1,0,0,0,1,0,
+  0,0,1,0,1,0,0,
+  0,0,0,1,0,0,0,
+  0,0,1,0,1,0,0,
+  0,1,0,0,0,1,0,
+  1,0,0,0,0,0,1,
+];
+const pgrid=document.getElementById('px-grid');
+X_PATTERN.forEach(v=>{
+  const d=document.createElement('div');
+  d.className='px'+(v?' on':'');
+  pgrid.appendChild(d);
+});
+
+const socket=io({ transports:['websocket'] });
+socket.on('connect', () => {
+  console.log('[controller] connected via', socket.io.engine.transport.name);
+});
+// Round-trip latency diagnostic: socket.io's built-in volatile emit timing
+setInterval(() => {
+  const start = performance.now();
+  socket.emit('ping_check', () => {
+    console.log('[controller] round-trip latency:', Math.round(performance.now() - start), 'ms');
+  });
+}, 5000);
+let mySlot=null,myCode=null,gameStarted=false;
+
+// ── RECONNECTION HANDLING ──
+// If the socket drops (e.g. phone tab throttled in background) and Socket.IO
+// auto-reconnects, the new connection has a fresh id and no room/slot —
+// re-announce ourselves so the server can re-bind us to our old slot.
+let connLostBanner=null;
+function showConnBanner(msg){
+  if(!connLostBanner){
+    connLostBanner=document.createElement('div');
+    connLostBanner.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#f4574b;color:#fff;text-align:center;font-family:"Nunito",sans-serif;font-size:.75rem;font-weight:700;padding:8px 0;';
+    document.body.appendChild(connLostBanner);
+  }
+  connLostBanner.textContent=msg;
+  connLostBanner.style.display='block';
+}
+function hideConnBanner(){ if(connLostBanner) connLostBanner.style.display='none'; }
+
+socket.on('disconnect',()=>{
+  if(mySlot&&myCode) showConnBanner('Connection lost — reconnecting...');
+});
+socket.io.on('reconnect',()=>{
+  if(mySlot&&myCode){
+    socket.emit('rejoin_game',{code:myCode,slot:mySlot});
+  }
+});
+socket.on('connect',()=>{
+  // Covers the case where socket.io.on('reconnect') already fired before
+  // our own listeners were attached, or after a manual reconnect.
+  if(mySlot&&myCode) socket.emit('rejoin_game',{code:myCode,slot:mySlot});
+});
+
+// ── READY BUTTON — declared early so joined handler can reference it ──
+const readyBtn=document.getElementById('ready-btn');
+let isReady=false;
+readyBtn.addEventListener('click',()=>{
+  if(isReady) return;
+  isReady=true;
+  readyBtn.textContent='Standing By...';
+  readyBtn.classList.add('done');
+  socket.emit('player_ready',{code:myCode});
+});
+
+// ── JOIN ──
+const joinScreen=document.getElementById('join-screen');
+const lobbyScreen=document.getElementById('lobby-screen');
+const ctrlScreen=document.getElementById('controller-screen');
+const codeInput=document.getElementById('code-input');
+const errorMsg=document.getElementById('error-msg');
+
+document.getElementById('join-btn').addEventListener('click',()=>doJoin());
+codeInput.addEventListener('keydown',e=>{if(e.key==='Enter') doJoin();});
+
+function doJoin(){
+  const code=codeInput.value.trim();
+  if(code.length!==6){errorMsg.textContent='Enter the 6-digit code';return;}
+  errorMsg.textContent='';
+  socket.emit('join_game',{code});
+  myCode=code;
+}
+
+socket.on('join_error',msg=>{
+  errorMsg.textContent=msg;
+});
+
+socket.on('joined',({slot,code})=>{
+  hideConnBanner();
+  mySlot=slot;myCode=code;
+  document.getElementById('my-slot-badge').textContent='Player '+slot;
+  document.getElementById('dpad-label').textContent=slot;
+  document.getElementById('ctrl-badge').textContent='Player '+slot;
+  // Reset ready state for new game (no-op visually if rejoining mid-game, screens stay as-is)
+  if(!gameStarted){
+    isReady=false;
+    readyBtn.textContent='Ready Up';
+    readyBtn.classList.remove('done');
+    document.getElementById('lobby-status').textContent='Waiting for other player...';
+    updateReadyDots({A:false,B:false},{A:false,B:false});
+    showScreen('lobby');
+  }
+});
+
+// ── LOBBY ──
+socket.on('player_joined',({slot,players})=>{
+  updateReadyDots({A:!!players.A,B:!!players.B},{A:false,B:false});
+  if(players.A&&players.B){
+    document.getElementById('lobby-status').textContent='Both players connected — ready up!';
+  }
+});
+
+socket.on('player_left',({slot})=>{
+  document.getElementById('lobby-status').textContent='Player '+slot+' disconnected...';
+  document.getElementById('dot-'+slot.toLowerCase()).classList.remove('on');
+});
+
+// Receive lobby updates (ready status)
+socket.on('game_event',({event,data})=>{
+  if(event==='lobby_ready_update'){
+    updateReadyDots({A:data.A,B:data.B},{A:data.readyA,B:data.readyB});
+  }
+  if(event==='game_start'){
+    showController();
+  }
+});
+
+socket.on('game_start',()=>{
+  isReady=false;
+  showController();
+});
+
+function updateReadyDots(present,ready){
+  document.getElementById('dot-a').className='ri-dot'+(present.A?' on':'');
+  document.getElementById('dot-b').className='ri-dot'+(present.B?' on':'');
+  if(ready.A) document.getElementById('dot-a').style.background='#2bb673';
+  if(ready.B) document.getElementById('dot-b').style.background='#2bb673';
+}
+
+socket.on('host_disconnected',()=>{
+  alert('Host disconnected. Please refresh the page.');
+});
+
+// ── CONTROLLER ──
+function showController(){
+  showScreen('controller');
+  gameStarted=true;
+}
+
+function showScreen(name){
+  joinScreen.classList.toggle('hidden',name!=='join');
+  lobbyScreen.classList.toggle('hidden',name!=='lobby');
+  ctrlScreen.classList.toggle('hidden',name!=='controller');
+}
+
+// D-PAD input — handles both touch and mouse
+const dpadBtns=document.querySelectorAll('.dpad-btn[data-dir]');
+const pressedDirs=new Set();
+
+function sendDir(dir,pressed){
+  if(!myCode||!mySlot) return;
+  socket.emit('ctrl_input',{code:myCode,slot:mySlot,dir,pressed});
+}
+
+function pressDir(dir){
+  if(pressedDirs.has(dir)) return;
+  pressedDirs.add(dir);
+  sendDir(dir,true);
+  const btn=document.querySelector(`.dpad-btn[data-dir="${dir}"]`);
+  if(btn) btn.classList.add('active');
+}
+
+function releaseDir(dir){
+  if(!pressedDirs.has(dir)) return;
+  pressedDirs.delete(dir);
+  sendDir(dir,false);
+  const btn=document.querySelector(`.dpad-btn[data-dir="${dir}"]`);
+  if(btn) btn.classList.remove('active');
+}
+
+dpadBtns.forEach(btn=>{
+  const dir=btn.dataset.dir;
+
+  btn.addEventListener('touchstart',e=>{e.preventDefault();pressDir(dir);},{passive:false});
+  btn.addEventListener('touchend',e=>{e.preventDefault();releaseDir(dir);},{passive:false});
+  btn.addEventListener('touchcancel',e=>{e.preventDefault();releaseDir(dir);},{passive:false});
+
+  // Mouse fallback (for testing on PC)
+  btn.addEventListener('mousedown',e=>{e.preventDefault();pressDir(dir);});
+  btn.addEventListener('mouseup',e=>{e.preventDefault();releaseDir(dir);});
+  btn.addEventListener('mouseleave',e=>{if(pressedDirs.has(dir)) releaseDir(dir);});
+});
+
+// Release all on window blur
+window.addEventListener('blur',()=>{
+  [...pressedDirs].forEach(d=>releaseDir(d));
+});
+
+// Action button — fires a single shot per tap, glows blue only while pressed
+const actionBtn=document.getElementById('action-btn');
+function fireAction(){
+  if(!myCode||!mySlot) return;
+  socket.emit('ctrl_fire',{code:myCode,slot:mySlot});
+}
+actionBtn.addEventListener('touchstart',e=>{e.preventDefault();actionBtn.classList.add('active');fireAction();},{passive:false});
+actionBtn.addEventListener('touchend',e=>{e.preventDefault();actionBtn.classList.remove('active');},{passive:false});
+actionBtn.addEventListener('touchcancel',e=>{e.preventDefault();actionBtn.classList.remove('active');},{passive:false});
+actionBtn.addEventListener('mousedown',()=>{actionBtn.classList.add('active');fireAction();});
+actionBtn.addEventListener('mouseup',()=>actionBtn.classList.remove('active'));
+actionBtn.addEventListener('mouseleave',()=>actionBtn.classList.remove('active'));
+
+// ── ROTATE-TO-LANDSCAPE GATE ──
+const rotateOverlay=document.getElementById('rotate-overlay');
+function checkOrientation(){
+  const isPortrait = window.matchMedia('(orientation: portrait)').matches;
+  rotateOverlay.classList.toggle('visible', isPortrait);
+  if(isPortrait){
+    // Safety: release any directions/action held right as the phone rotates,
+    // so nothing stays "stuck" pressed while the player can't see the screen.
+    [...pressedDirs].forEach(d=>releaseDir(d));
+    actionBtn.classList.remove('active');
+  }
+}
+window.matchMedia('(orientation: portrait)').addEventListener('change', checkOrientation);
+window.addEventListener('resize', checkOrientation);
+checkOrientation();
+</script>
+</body>
+</html>
