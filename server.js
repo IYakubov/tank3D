@@ -137,11 +137,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── CONTROLLER: directional input ──
-  socket.on('ctrl_input', ({ code, slot, dir, pressed }) => {
+  // ── CONTROLLER: analog stick input (x, y each in -1..1) ──
+  socket.on('ctrl_input', ({ code, slot, x, y }) => {
     const room = rooms[code];
     if (!room || !room.hostSocketId) return;
-    io.to(room.hostSocketId).emit('ctrl_input', { slot, dir, pressed });
+    io.to(room.hostSocketId).emit('ctrl_input', { slot, x, y });
   });
 
   // ── CONTROLLER: fire action ──

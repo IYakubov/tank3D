@@ -899,12 +899,11 @@ function initRound(){
 // ═══════════════════════════════════════════════════════
 const netInput={A:{fwd:0,turn:0},B:{fwd:0,turn:0}};
 
-function handleCtrlInput({slot,dir,pressed}){
+function handleCtrlInput({slot,x,y}){
   const s=netInput[slot];if(!s)return;
-  if(dir==='up')   {s.fwd  =pressed?1 :(s.fwd===1  ?0:s.fwd);}
-  if(dir==='down') {s.fwd  =pressed?-1:(s.fwd===-1 ?0:s.fwd);}
-  if(dir==='left') {s.turn =pressed?-1:(s.turn===-1?0:s.turn);}
-  if(dir==='right'){s.turn =pressed?1 :(s.turn===1 ?0:s.turn);}
+  // Analog stick: x = turn rate, y = forward/back (screen-down is positive, so flip for "up = forward")
+  s.turn=Math.max(-1,Math.min(1,x||0));
+  s.fwd =Math.max(-1,Math.min(1,-(y||0)));
 }
 function handleCtrlFire({slot}){
   if(!gameActive)return;
