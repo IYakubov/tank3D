@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tank War</title>
 <script src="/socket.io/socket.io.js"></script>
+<script type="importmap">{"imports":{"three":"/vendor/three.module.js"}}</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@500;600;700;800&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -229,7 +230,8 @@ canvas{display:block;position:absolute;top:0;left:0}
   <div id="toast"></div>
 </div>
 
-<script>
+<script type="module">
+import * as THREE from 'three';
 'use strict';
 // ═══════════════════════════════════════════════════════
 //  AUDIO
@@ -253,15 +255,55 @@ function sfxWin(){playSample(SND_VICTORY_SRC,.85);}
 function sfxEmpty(){}
 
 // ═══════════════════════════════════════════════════════
-//  CANVAS + RESIZE
+//  3D SCENE + RESIZE
 // ═══════════════════════════════════════════════════════
+// The game's physics/collision/networking all stay in the original flat
+// x/y "arena space" (pixels). SCALE converts that arena space into 3D
+// world units; WX()/WZ() map an arena (x,y) point onto the ground plane.
 const canvas=document.getElementById('c');
-const ctx=canvas.getContext('2d');
 let AW=800,AH=600;
+const SCALE=1/48;
+function WX(x){ return (x-AW/2)*SCALE; }
+function WZ(y){ return -(y-AH/2)*SCALE; }
+
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+const scene=new THREE.Scene();
+scene.background=new THREE.Color('#fff8ec');
+scene.fog=new THREE.Fog('#fff8ec',18,34);
+
+const camera=new THREE.PerspectiveCamera(42,1,0.1,100);
+
+scene.add(new THREE.HemisphereLight('#fff8ec','#d9c9a0',0.9));
+const sun=new THREE.DirectionalLight('#ffffff',1.1);
+sun.position.set(6,12,4);
+scene.add(sun);
+
+const groundMat=new THREE.MeshStandardMaterial({color:'#fff8ec',roughness:1});
+const grid=new THREE.GridHelper(1,1,'#ffe9c2','#ffe9c2');
+grid.material.transparent=true;grid.material.opacity=.55;
+let groundMesh=new THREE.Mesh(new THREE.PlaneGeometry(1,1),groundMat);
+groundMesh.rotation.x=-Math.PI/2;
+scene.add(groundMesh);
+scene.add(grid);
+
 function resize(){
   const a=document.getElementById('arena');
   AW=a.clientWidth;AH=a.clientHeight;
-  canvas.width=AW;canvas.height=AH;
+  renderer.setSize(AW,AH);
+  camera.aspect=AW/AH;
+  camera.updateProjectionMatrix();
+  fitGroundAndCamera();
+}
+function fitGroundAndCamera(){
+  const w=AW*SCALE,d=AH*SCALE;
+  groundMesh.scale.set(w,d,1);
+  grid.scale.set(w,1,d);
+  // Fixed high-angle overhead view; distance scales with arena size so the
+  // whole battlefield stays comfortably in frame at any window size/aspect.
+  const dist=Math.max(w,d)*1.05+3.5;
+  camera.position.set(0,dist*0.92,dist*0.62);
+  camera.lookAt(0,0,0);
 }
 window.addEventListener('resize',resize);
 
@@ -329,6 +371,7 @@ function genCubes(){
     const cw=Math.max(S,Math.round(bw/S)*S),ch=Math.max(S,Math.round(bh/S)*S);
     cubes.push({x:cx,y:cy,w:cw,h:ch});
   }
+  buildWalls3D();
 }
 
 function solidAt(x,y,r){
@@ -364,6 +407,7 @@ function placePowerups(){
       break;
     }
   }
+  buildPowerups3D();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -569,217 +613,145 @@ function spawnWallSparks(x,y,col){
 }
 
 // ═══════════════════════════════════════════════════════
-//  DRAW
+//  3D WORLD OBJECTS (walls, powerups, tanks, bullets, particles)
 // ═══════════════════════════════════════════════════════
-function draw(){
-  // Floor
-  ctx.fillStyle=PAL.floor;ctx.fillRect(0,0,AW,AH);
-  // Grid
-  ctx.strokeStyle=PAL.floorgrid;ctx.lineWidth=.5;ctx.globalAlpha=.45;
-  const GS=48;
-  for(let x=0;x<AW;x+=GS){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,AH);ctx.stroke();}
-  for(let y=0;y<AH;y+=GS){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(AW,y);ctx.stroke();}
-  ctx.globalAlpha=1;
-
-  drawCubes();
-  drawPowerups();
-  drawTrails();
-  drawBullets();
-  drawTanks();
-  drawParticles();
-}
-function drawStaticBg(){
-  ctx.fillStyle=PAL.floor;ctx.fillRect(0,0,AW,AH);
-  drawCubes();
-}
-
-function drawCubes(){
+const wallsGroup=new THREE.Group();scene.add(wallsGroup);
+const cubeGeo=new THREE.BoxGeometry(1,1,1);
+function buildWalls3D(){
+  wallsGroup.clear();
+  const wallMat=new THREE.MeshStandardMaterial({color:PAL.cube,roughness:.85});
+  const edgeMat=new THREE.LineBasicMaterial({color:PAL.cubeborder});
   for(const c of cubes){
-    ctx.fillStyle=PAL.cube;ctx.fillRect(c.x,c.y,c.w,c.h);
-    ctx.fillStyle=PAL.cubehi;ctx.fillRect(c.x+1,c.y+1,c.w-2,4);ctx.fillRect(c.x+1,c.y+1,4,c.h-2);
-    ctx.strokeStyle=PAL.cubeborder;ctx.lineWidth=1;ctx.strokeRect(c.x+.5,c.y+.5,c.w-1,c.h-1);
-    ctx.strokeStyle='#ffe1a8';ctx.lineWidth=.5;ctx.strokeRect(c.x+3,c.y+3,c.w-6,c.h-6);
+    const w=c.w*SCALE,d=c.h*SCALE,h=Math.min(1.15,Math.max(0.5,w*0.9));
+    const mesh=new THREE.Mesh(cubeGeo,wallMat);
+    mesh.scale.set(w,h,d);
+    mesh.position.set(WX(c.x+c.w/2),h/2,WZ(c.y+c.h/2));
+    wallsGroup.add(mesh);
+    const edges=new THREE.LineSegments(new THREE.EdgesGeometry(cubeGeo),edgeMat);
+    edges.scale.copy(mesh.scale);edges.position.copy(mesh.position);
+    wallsGroup.add(edges);
   }
 }
 
-function drawPowerups(){
+const powerupsGroup=new THREE.Group();scene.add(powerupsGroup);
+const PU_GEO={
+  SPEED:new THREE.OctahedronGeometry(0.34),
+  ARMOR:new THREE.IcosahedronGeometry(0.32,0),
+  DBL:new THREE.TetrahedronGeometry(0.36),
+  REPAIR:new THREE.SphereGeometry(0.3,10,8),
+  AMMO:new THREE.TorusGeometry(0.26,0.11,8,16),
+  PIERCE:new THREE.ConeGeometry(0.3,0.55,4),
+};
+function buildPowerups3D(){
+  powerupsGroup.clear();
   for(const pu of powerups){
-    if(pu.collected) continue;
     const def=PU_DEF[pu.type];
-    const pulse=.5+.5*Math.sin(pu.anim*2.5);
-    ctx.save();ctx.translate(pu.x,pu.y);ctx.rotate(pu.anim*.3);
-    const hs=16;
-    ctx.shadowBlur=10+pulse*7;ctx.shadowColor=def.color;
-    ctx.fillStyle=def.color+'28';ctx.fillRect(-hs,-hs,hs*2,hs*2);
-    ctx.strokeStyle=def.color;ctx.lineWidth=1;ctx.globalAlpha=.5+.5*pulse;
-    ctx.strokeRect(-hs,-hs,hs*2,hs*2);ctx.globalAlpha=1;ctx.shadowBlur=0;
-    ctx.font='18px serif';ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(def.icon,0,1);
-    ctx.restore();
+    const mat=new THREE.MeshStandardMaterial({color:def.color,emissive:def.color,emissiveIntensity:.55,roughness:.4});
+    const mesh=new THREE.Mesh(PU_GEO[pu.type]||new THREE.SphereGeometry(0.3),mat);
+    mesh.position.set(WX(pu.x),0.55,WZ(pu.y));
+    mesh.userData.pu=pu;
+    powerupsGroup.add(mesh);
+  }
+}
+function updatePowerups3D(){
+  for(const mesh of powerupsGroup.children){
+    const pu=mesh.userData.pu;
+    mesh.visible=!pu.collected;
+    if(pu.collected) continue;
+    mesh.rotation.y=pu.anim*1.4;mesh.rotation.x=pu.anim*.6;
+    mesh.position.y=0.55+Math.sin(pu.anim*2.5)*0.08;
   }
 }
 
-function drawTrails(){
-  for(const p of[p1,p2]){
-    if(!p) continue;
-    for(let i=0;i<p.trail.length;i++){
-      const t=p.trail[i];
-      const alpha=(i/p.trail.length)*0.16;
-      const sz=(i/p.trail.length)*9;
-      ctx.globalAlpha=alpha;ctx.fillStyle=p.col;
-      ctx.fillRect(t.x-sz/2,t.y-sz/2,sz,sz);
-    }
+function makeTankMesh(colHex,colBHex,colHiHex){
+  const g=new THREE.Group();
+  const col=new THREE.Color(colHex),colB=new THREE.Color(colBHex),colHi=new THREE.Color(colHiHex);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1,0.6,1),new THREE.MeshStandardMaterial({color:colB,roughness:.6}));
+  body.position.y=0.3;g.add(body);
+  const trackMat=new THREE.MeshStandardMaterial({color:'#2e2a4a',roughness:.9});
+  for(const s of[-1,1]){
+    const track=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.62,1.05),trackMat);
+    track.position.set(s*0.5,0.31,0);g.add(track);
   }
-  ctx.globalAlpha=1;
+  const turret=new THREE.Mesh(new THREE.SphereGeometry(0.34,14,10),new THREE.MeshStandardMaterial({color:colHi,roughness:.35}));
+  turret.position.y=0.68;g.add(turret);
+  const barrel=new THREE.Mesh(new THREE.BoxGeometry(0.85,0.14,0.14),new THREE.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:.25,roughness:.3}));
+  barrel.position.set(0.62,0.68,0);g.add(barrel);
+  const speedRing=new THREE.Mesh(new THREE.TorusGeometry(0.85,0.03,6,32),new THREE.MeshBasicMaterial({color:PAL.speed,transparent:true,opacity:0}));
+  speedRing.rotation.x=Math.PI/2;g.add(speedRing);
+  const armorRing=new THREE.Mesh(new THREE.TorusGeometry(0.78,0.04,6,32),new THREE.MeshBasicMaterial({color:PAL.armor,transparent:true,opacity:0}));
+  armorRing.rotation.x=Math.PI/2;g.add(armorRing);
+  g.userData={body,speedRing,armorRing};
+  return g;
+}
+const tank1Mesh=makeTankMesh(PAL.p1,PAL.p1b,PAL.p1hi);
+const tank2Mesh=makeTankMesh(PAL.p2,PAL.p2b,PAL.p2hi);
+scene.add(tank1Mesh,tank2Mesh);
+
+function updateTank3D(mesh,p){
+  if(!p){mesh.visible=false;return;}
+  mesh.visible=true;
+  mesh.position.set(WX(p.x),0,WZ(p.y));
+  mesh.rotation.y=p.angle;
+  const blinkOn=p.blink>0&&(Date.now()%200)<100;
+  mesh.userData.body.material.color.set(blinkOn?'#2e2a4a':p.colB);
+  mesh.userData.speedRing.scale.setScalar(TANK_R*SCALE/0.85*2.2);
+  mesh.userData.speedRing.material.opacity=p.speedActive?(.35+.25*Math.sin(tick*.2)):0;
+  mesh.userData.armorRing.scale.setScalar(TANK_R*SCALE/0.78*2.0);
+  mesh.userData.armorRing.material.opacity=p.armorActive?(.4+.25*Math.sin(tick*.16)):0;
+  const s=TANK_R*SCALE/0.7;
+  mesh.scale.setScalar(s);
 }
 
-function drawBullets(){
-  for(const b of bullets){
-    // Color shifts orange->red with each bounce
+// Small pooled mesh helper: keeps `pool` (array of THREE.Mesh) in sync with
+// `count` live items, creating/removing meshes as needed instead of
+// reallocating every frame.
+function syncPool(pool,group,count,createFn){
+  while(pool.length<count){const m=createFn();group.add(m);pool.push(m);}
+  for(let i=0;i<pool.length;i++) pool[i].visible=i<count;
+}
+
+const bulletsGroup=new THREE.Group();scene.add(bulletsGroup);
+const bulletPool=[];
+const bulletGeo=new THREE.SphereGeometry(1,10,8);
+function updateBullets3D(){
+  syncPool(bulletPool,bulletsGroup,bullets.length,()=>{
+    return new THREE.Mesh(bulletGeo,new THREE.MeshBasicMaterial({color:PAL.bullet}));
+  });
+  for(let i=0;i<bullets.length;i++){
+    const b=bullets[i],mesh=bulletPool[i];
     const bCol=b.bounces===0?PAL.bullet:b.bounces===1?'#ffaa00':b.bounces===2?'#ff6600':'#ff2200';
-    const radius=3.5+b.bounces*1.2;
-    ctx.globalAlpha=.22;ctx.fillStyle=bCol;
-    ctx.fillRect(b.x-b.dx*16-2.5,b.y-b.dy*16-2.5,5,5);
-    ctx.globalAlpha=.1;ctx.fillRect(b.x-b.dx*28-2,b.y-b.dy*28-2,4,4);
-    ctx.globalAlpha=1;
-    ctx.shadowBlur=12+b.bounces*4;ctx.shadowColor=bCol;
-    ctx.fillStyle=bCol;
-    ctx.beginPath();ctx.arc(b.x,b.y,b.pierce?radius+1.5:radius,0,Math.PI*2);ctx.fill();
-    if(b.pierce){ctx.strokeStyle=PAL.pierce;ctx.lineWidth=1.5;ctx.stroke();}
-    // bounce count indicator rings
-    for(let r=0;r<b.bounces;r++){
-      ctx.strokeStyle=bCol;ctx.lineWidth=.8;ctx.globalAlpha=.4-r*.1;
-      ctx.beginPath();ctx.arc(b.x,b.y,radius+4+r*4,0,Math.PI*2);ctx.stroke();
-    }
-    ctx.globalAlpha=1;ctx.shadowBlur=0;
+    mesh.material.color.set(bCol);
+    const r=(3.5+b.bounces*1.2)*SCALE*1.6;
+    mesh.scale.setScalar(r);
+    mesh.position.set(WX(b.x),0.5,WZ(b.y));
   }
 }
 
-function drawTanks(){
-  for(const p of[p1,p2]){
-    if(!p) continue;
-    const{x,y,angle}=p;
-    const HS=TANK_R;
-    const blinkOn=p.blink>0&&(Date.now()%200)<100;
-
-    if(p.speedActive){
-      ctx.strokeStyle=PAL.speed;ctx.lineWidth=1.2;ctx.globalAlpha=.4+.25*Math.sin(tick*.06);
-      ctx.beginPath();ctx.arc(x,y,HS*2.2,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
-    }
-    if(p.armorActive){
-      ctx.strokeStyle=PAL.armor;ctx.lineWidth=2;ctx.globalAlpha=.5+.3*Math.sin(tick*.05);
-      ctx.beginPath();ctx.arc(x,y,HS*2,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
-    }
-
-    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
-
-    // Body glow
-    const ga=blinkOn?.05:.35;
-    const grd=ctx.createRadialGradient(0,0,0,0,0,HS*2.6);
-    grd.addColorStop(0,p.col+'50');grd.addColorStop(1,'transparent');
-    ctx.globalAlpha=ga;ctx.fillStyle=grd;
-    ctx.beginPath();ctx.arc(0,0,HS*2.6,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
-
-    // Tank body (rotated rectangle)
-    ctx.fillStyle=p.colB;
-    ctx.fillRect(-HS,-HS,HS*2,HS*2);
-    ctx.strokeStyle=blinkOn?'#2e2a4a':p.col;
-    ctx.lineWidth=2;ctx.shadowBlur=blinkOn?0:9;ctx.shadowColor=p.col;
-    ctx.strokeRect(-HS,-HS,HS*2,HS*2);ctx.shadowBlur=0;
-
-    // Tracks (sides)
-    ctx.fillStyle='#2e2a4a';
-    ctx.fillRect(-HS,-HS,5,HS*2);ctx.fillRect(HS-5,-HS,5,HS*2);
-    ctx.strokeStyle=p.col+'66';ctx.lineWidth=.8;
-    // track lines
-    for(let t=-HS+4;t<HS;t+=6){
-      ctx.beginPath();ctx.moveTo(-HS,t);ctx.lineTo(-HS+5,t);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(HS-5,t);ctx.lineTo(HS,t);ctx.stroke();
-    }
-
-    // Corner accents
-    ctx.strokeStyle=p.colHi;ctx.lineWidth=1;
-    const ca=5;
-    ctx.beginPath();
-    ctx.moveTo(-HS,-HS+ca);ctx.lineTo(-HS,-HS);ctx.lineTo(-HS+ca,-HS);
-    ctx.moveTo(HS-ca,-HS);ctx.lineTo(HS,-HS);ctx.lineTo(HS,-HS+ca);
-    ctx.moveTo(-HS,HS-ca);ctx.lineTo(-HS,HS);ctx.lineTo(-HS+ca,HS);
-    ctx.moveTo(HS-ca,HS);ctx.lineTo(HS,HS);ctx.lineTo(HS,HS-ca);
-    ctx.stroke();
-
-    // Barrel (forward = +X in local space)
-    const blen=HS*1.55,bw=HS*.28;
-    ctx.fillStyle=p.col;ctx.shadowBlur=7;ctx.shadowColor=p.col;
-    ctx.beginPath();
-    ctx.moveTo(0,bw);ctx.lineTo(blen,bw);ctx.lineTo(blen,-bw);ctx.lineTo(0,-bw);
-    ctx.closePath();ctx.fill();ctx.shadowBlur=0;
-
-    // Turret dome
-    ctx.fillStyle=p.colHi;ctx.beginPath();ctx.arc(0,0,HS*.4,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(0,0,HS*.22,0,Math.PI*2);ctx.fill();
-
-    ctx.restore();
-
-    // HP pips (always upright, above tank)
-    for(let h=0;h<HP_MAX;h++){
-      ctx.fillStyle=h<p.hp?p.col:'#ffe1a8';
-      ctx.fillRect(x-HS+h*(HS*.44),y-HS-14,HS*.38,5);
-    }
+const particlesGroup=new THREE.Group();scene.add(particlesGroup);
+const particlePool=[];
+const particleGeo=new THREE.BoxGeometry(1,1,1);
+function updateParticles3D(){
+  syncPool(particlePool,particlesGroup,particles.length,()=>{
+    return new THREE.Mesh(particleGeo,new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true}));
+  });
+  for(let i=0;i<particles.length;i++){
+    const p=particles[i],mesh=particlePool[i];
+    mesh.material.color.set(p.col);
+    mesh.material.opacity=Math.max(0,p.life);
+    const sz=Math.max(0.02,p.sz*SCALE*1.6);
+    mesh.scale.setScalar(sz);
+    mesh.position.set(WX(p.x),0.35+p.sz*SCALE*0.5,WZ(p.y));
   }
 }
 
-function drawParticles(){
-  for(const p of particles){
-    ctx.globalAlpha=Math.max(0,p.life);ctx.fillStyle=p.col;
-    if(p.sq) ctx.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz);
-    else{ctx.beginPath();ctx.arc(p.x,p.y,p.sz/2,0,Math.PI*2);ctx.fill();}
-  }
-  ctx.globalAlpha=1;
-}
-
-// ═══════════════════════════════════════════════════════
-//  HUD
-// ═══════════════════════════════════════════════════════
-function updateHUD(){
-  if(p1){document.getElementById('hp1').style.width=(p1.hp/HP_MAX*100)+'%';document.getElementById('hpval1').textContent=p1.hp+'/'+HP_MAX;renderAmmo('ammo1',p1);}
-  if(p2){document.getElementById('hp2').style.width=(p2.hp/HP_MAX*100)+'%';document.getElementById('hpval2').textContent=p2.hp+'/'+HP_MAX;renderAmmo('ammo2',p2);}
-  document.getElementById('sc1').textContent=scores.p1;
-  document.getElementById('sc2').textContent=scores.p2;
-}
-function renderAmmo(id,p){
-  const el=document.getElementById(id);el.innerHTML='';
-  const lbl=document.createElement('span');lbl.className='ammo-label';lbl.textContent='Ammo ';el.appendChild(lbl);
-  for(let i=0;i<AMMO_MAX;i++){
-    const d=document.createElement('div');d.className='ammo-pip'+(i<p.ammo?(p.num===1?' lp1':' lp2'):'');el.appendChild(d);
-  }
-  for(const[show,icon,icol] of[[p.armorActive,'🛡',PAL.armor],[p.dblActive,'💥',PAL.dbl],[p.pierceActive,'🎯',PAL.pierce],[p.speedActive,'⚡',PAL.speed]]){
-    
-    const d=document.createElement('span');
-    d.style.cssText=`font-size:12px;margin-left:4px;filter:drop-shadow(0 0 3px ${icol})`;if(!show)continue;
-    d.textContent=icon;el.appendChild(d);
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-//  ROUND END / OVERLAY
-// ═══════════════════════════════════════════════════════
-
-
-// ═══════════════════════════════════════════════════════
-//  INIT + LOOP
-// ═══════════════════════════════════════════════════════
-function spawnSafeMargin(){
-  // Border wall is 1 cube thick; tank must clear it plus its own radius plus a little breathing room
-  return CUBE_SZ + TANK_R + 6;
-}
-
-function initRound(){
-  resize();genCubes();
-  bullets=[];particles=[];
-  const m=spawnSafeMargin();
-  p1=makePlayer(m,m,PAL.p1,'#1f5fc2','#8fc1ff','Player A',1,0);
-  p2=makePlayer(AW-m,AH-m,PAL.p2,'#c96e1f','#ffcda0','Player B',2,Math.PI);
-  placePowerups();gameActive=true;updateHUD();
+function renderFrame(){
+  updatePowerups3D();
+  updateTank3D(tank1Mesh,p1);
+  updateTank3D(tank2Mesh,p2);
+  updateBullets3D();
+  updateParticles3D();
+  renderer.render(scene,camera);
 }
 
 function loop(ts){
@@ -793,7 +765,7 @@ function loop(ts){
     }
     for(const pu of powerups) if(!pu.collected) pu.anim+=dt*.003;
   }
-  draw();
+  renderFrame();
   requestAnimationFrame(loop);
 }
 
